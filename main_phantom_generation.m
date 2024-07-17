@@ -36,7 +36,8 @@
 clear; close all;
 
 % Define file name
-savename = 'voxim15';
+% savename = 'voxim15';
+savename = 'voxim18';
 
 % Define sequence parameters:
 % 'SpoiledGradientEcho' => T1-weighted image
@@ -45,13 +46,14 @@ savename = 'voxim15';
 % 'SingleSpinEcho' => T2 mapping
 % 'SingleSpinEchoWithFatSat' => Diffusion-weighted image
 % 'MultiEchoSpoiledGradientEcho' => Proton density fat fraction
-sigtype = 'SingleSpinEcho';
+sigtype = 'SpoiledGradientEcho';
 
 % Define sampling trajectory:
 % 'cartesian'
 % 'radial'
 % 'spiral'
-samptraj = 'cartesian';
+% samptraj = 'cartesian';
+samptraj = 'radial';
 
 % Define 3D resolution and FOV
 fov = 420; % field-of-view (mm)
@@ -62,7 +64,7 @@ nset = 1; % # of sets
 
 % Define number of sampling lines
 np_cartesian = 256; % # of Cartesian lines
-np_radial = 288; % # of projections/spokes
+np_radial = 200; % # of projections/spokes
 np_spiral = 48; % # of spiral arms
 sampmode = 'demo'; % sampling mode: 'demo', 'simple', 'eachEcho' 
 % Note that "sampmode" will affect the simulation time (mins to hours, depending on the number of Echoes).
@@ -122,11 +124,10 @@ elseif strcmp(samptraj,'radial')
 elseif strcmp(samptraj,'spiral')
     np = np_spiral;
 end
-opts = prepareNUFFT(mtx,np,samptraj,'linear_sorted','fov',fov,'FWshift',FWshift);
-
-% Load in-vivo/simulated coil sensitivity maps
-load(coilmap);
-cmap = gencmap([mtx mtx npar],nc,origcmap);
+opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
+% load(coilmap);
+% cmap = gencmap([mtx mtx nnp, traj_sort = 'linear_sorted';par],nc,origcmap);
+cmap = gencmap([mtx mtx npar],nc);
 
 % Sequence parameters
 [seqparam,defseq] = setseqparam(sigtype,[np npar nset],sampmode);
@@ -138,15 +139,18 @@ sigevo = gensigevo(tissueprop,seqparam);
 nt = length(defseq.demosig);
 [nr,~] = size(opts.kx);
 mixsamp = zeros(nr,np,nc,npar,nt,'single');
+% refimg = zeros(mtx, mtx, npar, nt, 2);
 for itp = 1:nt
     imPall = model2voximg(phanimg(:,:,:,mod(defseq.demosig(itp)-1,tframe)+1),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
     if itp == 1
-        nval = calcnoiselvl(imPall,cmap);
+        nval = calcnoiselvl(imPall, cmap);
     end
     mixsamp(:,:,:,:,itp) = voximg2ksp(imPall,cmap,nval,opts); % k-space + noise
+    % refimg(:,:,:,itp, :) = imPall;
 end
 
 save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
+% save([savename '_refimg.mat'],'refimg','-v7.3')
 fprintf('Data acquisition done\n');
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -155,9 +159,11 @@ fprintf('Data acquisition done\n');
 
 % Convert 4D phantom k-space to images
 reconimg = ksp2img(mixsamp,opts,cmap);
+save([savename '_reconimg.mat'],'reconimg','-v7.3')
+save([savename '_cmap.mat'],'cmap','-v7.3')
 fprintf('Data reconstruction done\n');
 
-% Show phantom images
+%% Show phantom images
 showimg(reconimg(:,:,round(npar/2),:));colormap(gray);title('Reconstructed phantom images: axial plane')
 showimg(imrotate(squeeze(reconimg(round(mtx/2),:,:,:)),90));colormap(gray);title('Reconstructed phantom images: frontal plane')
 

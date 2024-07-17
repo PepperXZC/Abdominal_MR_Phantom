@@ -26,6 +26,7 @@ function cmap = generateCoilMap(imsize,nc,sigma,ang)
         cmap = zeros([imsize nc],'single');
         for i=1:nc
             q = round(rotatePoint(initPoint,ang(i)));
+            % q = round(rotatepoint(ang(i),initPoint));
             xcen = imsize(2)/2 + q(1); % correct x-offset
             ycen = imsize(1)/2 + q(2); % correct y-offset
             cmap(:,:,i) = exp(-((X-xcen).^2+(Y-ycen).^2)./(2*sigma^2));
@@ -58,6 +59,14 @@ function cmap = generateCoilMap(imsize,nc,sigma,ang)
         end
     end
     % END coilmap_3D()
+
+    function [ op ] = rotatePoint( p, angle )
+        %ROTATEPOINT Rotate points
+        %   p is point in 3D, R is rotation ismatrix
+        theta = angle*pi/180;
+        rotationMatrix = [cos(theta) -sin(theta) 0; sin(theta) cos(theta) 0; 0 0 1];
+        op = rotationMatrix * p;
+    end
 
 cmap = [];
 

@@ -170,3 +170,24 @@ else
 end
 
 fprintf('Signal simulation done\n');
+
+function [M] = zrot(phi)
+
+c = cos(phi);
+s = sin(phi);
+
+M = [c -s 0; s c 0; 0 0 1];
+
+function [M] = yrot(phi)
+
+c = cos(phi);
+s = sin(phi);
+
+M = [c 0 s; 0 1 0; -s 0 c];
+
+function [M] = xrot(phi)
+
+c = cos(phi);
+s = sin(phi);
+
+M = [1 0 0; 0 c -s; 0 s c];
