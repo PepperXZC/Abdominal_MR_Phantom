@@ -37,7 +37,7 @@ clear; close all;
 
 % Define file name
 % savename = 'voxim15';
-savename = 'voxim18';
+savename = 'voxim19';
 
 % Define sequence parameters:
 % 'SpoiledGradientEcho' => T1-weighted image
@@ -124,11 +124,12 @@ elseif strcmp(samptraj,'radial')
 elseif strcmp(samptraj,'spiral')
     np = np_spiral;
 end
+% opts = prepareNUFFT3d(mtx,npar,np,slthick,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
 opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
 % load(coilmap);
 % cmap = gencmap([mtx mtx nnp, traj_sort = 'linear_sorted';par],nc,origcmap);
 cmap = gencmap([mtx mtx npar],nc);
-
+% cmap = permute(cmap, [1,2,4,3]);
 % Sequence parameters
 [seqparam,defseq] = setseqparam(sigtype,[np npar nset],sampmode);
 
@@ -136,21 +137,22 @@ cmap = gencmap([mtx mtx npar],nc);
 sigevo = gensigevo(tissueprop,seqparam);
 
 % Convert voxels to phantom images (This step will take mins to hours, depending on the number of time frames)
+%%
 nt = length(defseq.demosig);
 [nr,~] = size(opts.kx);
 mixsamp = zeros(nr,np,nc,npar,nt,'single');
-% refimg = zeros(mtx, mtx, npar, nt, 2);
+refimg = zeros(mtx, mtx, npar, nt, 2, 'single');
 for itp = 1:nt
     imPall = model2voximg(phanimg(:,:,:,mod(defseq.demosig(itp)-1,tframe)+1),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
     if itp == 1
-        nval = calcnoiselvl(imPall, cmap);
+        nval = calcnoiselvl(imPall,cmap);
     end
     mixsamp(:,:,:,:,itp) = voximg2ksp(imPall,cmap,nval,opts); % k-space + noise
-    % refimg(:,:,:,itp, :) = imPall;
+    refimg(:,:,:,itp, :) = imPall;
 end
 
 save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
-% save([savename '_refimg.mat'],'refimg','-v7.3')
+save([savename '_refimg.mat'],'refimg','-v7.3')
 fprintf('Data acquisition done\n');
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -164,7 +166,35 @@ save([savename '_cmap.mat'],'cmap','-v7.3')
 fprintf('Data reconstruction done\n');
 
 %% Show phantom images
-showimg(reconimg(:,:,round(npar/2),:));colormap(gray);title('Reconstructed phantom images: axial plane')
-showimg(imrotate(squeeze(reconimg(round(mtx/2),:,:,:)),90));colormap(gray);title('Reconstructed phantom images: frontal plane')
+% showimg(reconimg(:,:,round(npar/2),:));colormap(gray);title('Reconstructed phantom images: axial plane')
+% showimg(imrotate(squeeze(reconimg(round(mtx/2),:,:,:)),90));colormap(gray);title('Reconstructed phantom images: frontal plane')
+figure
+sli = 10;
+subplot(1,2,1)
+imshow(abs(reconimg(:,:,sli,1)),[]);
+colorbar;
+subplot(1,2,2)
+imshow(abs(refimg(:,:,sli,1,1)+refimg(:,:,sli,1,2)),[]);
+colorbar;
 
-
+%% phantom check
+addpath("utils/");
+np2 = 64;
+tic
+op2 = prepareNUFFT3d(mtx,np2,np,slthick,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
+toc
+imp = phantom(256,256, np2);
+imp = repmat(imp, 1,1,np2);
+kspsize = true([512, 200, np2]);
+imsize = true([256, 256, np2]);
+ksp = embed(op2.G * imp, kspsize);
+im2 = embed(op2.G' * (op2.wib .* ksp(:)), imsize);
+%%
+figure
+sli = 10;
+subplot(1,2,1)
+imshow(abs(imp(:,:,sli)),[]);
+colorbar;
+subplot(1,2,2)
+imshow(abs(im2(:,:,sli)),[]);
+colorbar;
