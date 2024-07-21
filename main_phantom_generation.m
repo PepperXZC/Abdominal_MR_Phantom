@@ -46,7 +46,7 @@ savename = 'voxim19';
 % 'SingleSpinEcho' => T2 mapping
 % 'SingleSpinEchoWithFatSat' => Diffusion-weighted image
 % 'MultiEchoSpoiledGradientEcho' => Proton density fat fraction
-sigtype = 'SpoiledGradientEcho';
+sigtype = 'SingleSpinEcho';
 
 % Define sampling trajectory:
 % 'cartesian'
@@ -118,42 +118,77 @@ fprintf('Phantom generation done\n');
 
 % prepare FFT/NUFFT
 if strcmp(samptraj,'cartesian')
-    np = np_cartesian;
+    opts.np = np_cartesian;
 elseif strcmp(samptraj,'radial')
-    np = np_radial;
+    opts.np = np_radial;
 elseif strcmp(samptraj,'spiral')
-    np = np_spiral;
+    opts.np = np_spiral;
 end
-% opts = prepareNUFFT3d(mtx,npar,np,slthick,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
-opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
-% load(coilmap);
-% cmap = gencmap([mtx mtx nnp, traj_sort = 'linear_sorted';par],nc,origcmap);
+np = opts.np;
+% opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
+%% ktraj, dcf, gmri prepare
+% opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
+dcf_path = strcat(savename, '_dcf.mat');
+opts = radial3dsos(mtx,npar,np,samptraj, ...
+    'goldenAngle_sorted_180','FWshift',FWshift);
+if ~exist(dcf_path)
+    tic
+    wi = ir_mri_density_comp(opts.kspace,'pipe', 'G', opts.G.Gnufft, ...
+        'arg_pipe', {'fov', [opts.ig.fovs], 'niter', 60});
+    toc
+    save(dcf_path,'wi','-v7.3')
+else
+    wi = load(dcf_path);
+end
+opts.wib = wi.wi;
+wi_max = 1.05 / prod(opts.ig.fovs);
+if 1
+    nsample = size(opts.kspace,1);
+    im subplot
+    plot([1 nsample], wi_max * [1 1], 'm-', ...
+        1:nsample, opts.wib, '.');
+    titlef('DCF')
+    xlim([1 nsample]), xtick([1 nsample])
+    legend('wi max', ['DCF ' 'pipe'], ...
+        'location', 'southeast'), drawnow
+end
+%% coil sensitivity maps
 cmap = gencmap([mtx mtx npar],nc);
-% cmap = permute(cmap, [1,2,4,3]);
+save([savename '_cmap.mat'],'cmap','-v7.3')
+
+% load(coilmap);    
+% cmap = gencmap([mtx mtx nnp, traj_sort = 'linear_sorted';par],nc,origcmap);
+
+%% Simulation
+
 % Sequence parameters
 [seqparam,defseq] = setseqparam(sigtype,[np npar nset],sampmode);
 
 % Bloch simulation
 sigevo = gensigevo(tissueprop,seqparam);
 
-% Convert voxels to phantom images (This step will take mins to hours, depending on the number of time frames)
-%%
+%% Convert voxels to phantom images (This step will take mins to hours, depending on the number of time frames)
 nt = length(defseq.demosig);
-[nr,~] = size(opts.kx);
+nr = 2*mtx;
+opts.nr = nr;
 mixsamp = zeros(nr,np,nc,npar,nt,'single');
-refimg = zeros(mtx, mtx, npar, nt, 2, 'single');
+refimg = zeros(mtx, mtx, npar, nt, 2);
 for itp = 1:nt
     imPall = model2voximg(phanimg(:,:,:,mod(defseq.demosig(itp)-1,tframe)+1),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
     if itp == 1
-        nval = calcnoiselvl(imPall,cmap);
+        nval = calcnoiselvl(imPall, cmap);
     end
-    mixsamp(:,:,:,:,itp) = voximg2ksp(imPall,cmap,nval,opts); % k-space + noise
     refimg(:,:,:,itp, :) = imPall;
 end
 
-save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
 save([savename '_refimg.mat'],'refimg','-v7.3')
 fprintf('Data acquisition done\n');
+%% transform to kspace
+cmap_pmt = permute(cmap,[1,2,4,3]);
+for itp = 1:nt
+    mixsamp(:,:,:,:,itp) = voximg2ksp3d(imPall,cmap_pmt,nval,opts); % k-space + noise
+end
+save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%% PART 3 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -162,39 +197,10 @@ fprintf('Data acquisition done\n');
 % Convert 4D phantom k-space to images
 reconimg = ksp2img(mixsamp,opts,cmap);
 save([savename '_reconimg.mat'],'reconimg','-v7.3')
-save([savename '_cmap.mat'],'cmap','-v7.3')
 fprintf('Data reconstruction done\n');
 
 %% Show phantom images
-% showimg(reconimg(:,:,round(npar/2),:));colormap(gray);title('Reconstructed phantom images: axial plane')
-% showimg(imrotate(squeeze(reconimg(round(mtx/2),:,:,:)),90));colormap(gray);title('Reconstructed phantom images: frontal plane')
-figure
-sli = 10;
-subplot(1,2,1)
-imshow(abs(reconimg(:,:,sli,1)),[]);
-colorbar;
-subplot(1,2,2)
-imshow(abs(refimg(:,:,sli,1,1)+refimg(:,:,sli,1,2)),[]);
-colorbar;
+showimg(reconimg(:,:,round(npar/2),:));colormap(gray);title('Reconstructed phantom images: axial plane')
+showimg(imrotate(squeeze(reconimg(round(mtx/2),:,:,:)),90));colormap(gray);title('Reconstructed phantom images: frontal plane')
 
-%% phantom check
-addpath("utils/");
-np2 = 64;
-tic
-op2 = prepareNUFFT3d(mtx,np2,np,slthick,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
-toc
-imp = phantom(256,256, np2);
-imp = repmat(imp, 1,1,np2);
-kspsize = true([512, 200, np2]);
-imsize = true([256, 256, np2]);
-ksp = embed(op2.G * imp, kspsize);
-im2 = embed(op2.G' * (op2.wib .* ksp(:)), imsize);
-%%
-figure
-sli = 10;
-subplot(1,2,1)
-imshow(abs(imp(:,:,sli)),[]);
-colorbar;
-subplot(1,2,2)
-imshow(abs(im2(:,:,sli)),[]);
-colorbar;
+

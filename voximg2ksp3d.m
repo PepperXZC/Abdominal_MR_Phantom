@@ -1,11 +1,11 @@
 function mixsamp = voximg2ksp3d(imPall,cmap,nval,opts)
 
-[nr,np] = size(opts.kx);
 [~,~,npar,wfcomp,nframe] = size(imPall);
 [~,~,~,nc] = size(cmap);
-im2kspmask = true(nr,np,npar);
+% [~,~,nc,~] = size(cmap);
+im2kspmask = true(opts.nr,opts.np,npar);
     
-mixsamp = zeros(nr,np,npar,nc,'single');
+mixsamp = zeros(opts.nr,opts.np,npar,nc,'single');
 
 tstart = tic;
 imW = repmat(imPall(:,:,:,1),[1 1 1 nc]).*cmap;
@@ -21,10 +21,10 @@ for c = 1:nc
     end
     
     % Apply phase accumulation
-    mixksp = ksp2DW(:,:,:,c)+ksp2DF(:,:,:,c).*repmat(exp(1i*2*pi*opts.FWshift*30*10^-6*(0:nr-1))',[1 np npar]);
+    mixksp = ksp2DW(:,:,:,c)+ksp2DF(:,:,:,opts.c).*repmat(exp(1i*2*pi*opts.FWshift*30*10^-6*(0:opts.nr-1))',[1 opts.np npar]);
     
     % Add noise
-    mixsamp(:,:,:,c) = mixksp+nval*(randn(nr,np,npar)+1i*randn(nr,np,npar));
+    mixsamp(:,:,:,c) = mixksp+nval*(randn(opts.nr,opts.np,npar)+1i*randn(opts.nr,opts.np,npar));
 end
 
 disp(['Simulate current frame in ' num2str(toc(tstart)) ' sec']);
