@@ -171,7 +171,7 @@ sigevo = gensigevo(tissueprop,seqparam);
 nt = length(defseq.demosig);
 nr = 2*mtx;
 opts.nr = nr;
-mixsamp = zeros(nr,np,nc,npar,nt,'single');
+mixsamp = zeros(nr,np,npar,nc,nt,'single');
 refimg = zeros(mtx, mtx, npar, nt, 2);
 for itp = 1:nt
     imPall = model2voximg(phanimg(:,:,:,mod(defseq.demosig(itp)-1,tframe)+1),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
@@ -186,7 +186,10 @@ fprintf('Data acquisition done\n');
 %% transform to kspace
 cmap_pmt = permute(cmap,[1,2,4,3]);
 for itp = 1:nt
-    mixsamp(:,:,:,:,itp) = voximg2ksp3d(imPall,cmap_pmt,nval,opts); % k-space + noise
+    tic;
+    % mixsamp(:,:,:,:,itp) = voximg2ksp3d(squeeze(refimg(:,:,:,itp, :)),cmap_pmt,nval,opts); % k-space + noise
+    mixsamp(:,:,:,:,itp) = voximg2ksp3d(squeeze(refimg(:,:,:,itp, :)),cmap_pmt,nval,opts); % k-space + noise
+    timeElapsed=toc;    fprintf('Time for recon one frame: %f seconds.\n', timeElapsed);
 end
 save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
 
@@ -195,8 +198,10 @@ save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Convert 4D phantom k-space to images
-reconimg = ksp2img(mixsamp,opts,cmap);
+tic
+reconimg = ksp2img3d(mixsamp,opts,cmap_pmt);
 save([savename '_reconimg.mat'],'reconimg','-v7.3')
+toc
 fprintf('Data reconstruction done\n');
 
 %% Show phantom images

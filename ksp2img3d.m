@@ -17,7 +17,7 @@ function reconimg = ksp2img(mixsamp,opts,cmap)
 % April 2018
 % -----------------------------------------------------------------------------------------
 
-[nr, np, npar, nc , nt] = size(mixsamp);
+[nr, np, nc , npar, nt] = size(mixsamp);
 mtx = opts.N;
 ksp2immask = true(mtx,mtx, npar);
 reconimg = zeros(mtx,mtx,npar,nt,'single');
@@ -32,7 +32,7 @@ else
     for itp = 1:nt  
         for c = 1:nc
             x = zeros(nr,np,npar,'single');
-            x = mixsamp(:,:,:, c,itp);
+            x = mixsamp(:,:, c,:,itp);
             imgtemp(:,:,:, c,itp) = embed(opts.G'*(opts.wib.*x(:)),ksp2immask);
         end
         reconimg(:,:,:,itp) = squeeze(sum(conj(cmap).*imgtemp(:,:,:,:,itp),4)); % coil combination

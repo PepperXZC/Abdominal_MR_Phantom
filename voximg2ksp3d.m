@@ -11,7 +11,7 @@ tstart = tic;
 imW = repmat(imPall(:,:,:,1),[1 1 1 nc]).*cmap;
 imF = repmat(imPall(:,:,:,2),[1 1 1 nc]).*cmap;
 
-for c = 1:nc
+parfor c = 1:nc
     if strcmp(opts.trajectory,'cartesian')
         ksp2DW = squeeze(fft2n(imW(:,:,c,:),1,2)); % one slice/partition
         ksp2DF = squeeze(fft2n(imF(:,:,c,:),1,2));
@@ -21,7 +21,7 @@ for c = 1:nc
     end
     
     % Apply phase accumulation
-    mixksp = ksp2DW(:,:,:,c)+ksp2DF(:,:,:,opts.c).*repmat(exp(1i*2*pi*opts.FWshift*30*10^-6*(0:opts.nr-1))',[1 opts.np npar]);
+    mixksp = ksp2DW(:,:,:,c)+ksp2DF(:,:,:,c).*repmat(exp(1i*2*pi*opts.FWshift*30*10^-6*(0:opts.nr-1))',[1 opts.np npar]);
     
     % Add noise
     mixsamp(:,:,:,c) = mixksp+nval*(randn(opts.nr,opts.np,npar)+1i*randn(opts.nr,opts.np,npar));
