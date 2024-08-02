@@ -1,4 +1,4 @@
-function opts = prepareNUFFT(N,np,trajectory,viewOrder,varargin)
+function opts = prepareNUFFT(nt, N,Nz,np,trajectory,viewOrder,varargin)
 % PREPARENUFFT Creates the options structure for gridding non-Cartesian k-space
 % with the NUFFT.
 %
@@ -61,17 +61,24 @@ for i = 1:2:length(varargin)
             kspall = varargin{i+1};
         case 'FWshift'
             opts.FWshift = varargin{i+1};
+        case 'sltk'
+            opts.sltk = varargin{i+1};
 		otherwise % skip it
 	end
 end
 
+opts.ig = image_geom('nx', N, 'nz', Nz, ...
+    'offsets', 'dsp', ... % (-n/2:n/2-1) for mri
+    'fov', [opts.fov, opts.fov, opts.sltk*Nz]); % 20 cm transaxial FOV
 
 %% Prepare NUFFT structure
+for it=1:nt
 switch opts.trajectory
-    case 'radial'; prepare_radial();
+    case 'radial'; prepare_radial(it);
     case 'spiral'; prepare_spiral();
     case 'cartesian'; prepare_cartesian();
     otherwise; error('Trajectory not supported')
+end
 end
 
     function prepare_spiral()
@@ -127,10 +134,11 @@ end
         opts.wib=opts.wib(:);
     end
 
-    function prepare_radial()
+    function prepare_radial(ii)
         
         golden_ratio = (sqrt(5)+1)/2;
         golden_angle = 180/golden_ratio;
+        st = randi(100);
         
         switch opts.viewOrder
             
@@ -139,11 +147,11 @@ end
             case 'linear_360'
                 ang = 0:360/np:360-360/np;
             case 'linear_GA'
-                ang = 0:golden_angle:golden_angle*(np-1);
+                ang = golden_angle*st:golden_angle:golden_angle*(st+np-1);
                 ang = rem(ang,180);
                 [~, angix] = sort(ang);
                 opts.angix = angix;
-                ang = 0:180/np:180-180/np;
+%                ang = 0:180/np:180-180/np;
 %                 ang = ang(angix);
             case 'goldenAngle_sorted_180'
                 ang = 0:golden_angle:golden_angle*(np-1);
@@ -199,11 +207,13 @@ end
         wib(wib>0.00005) = 0;
         wib = wib(:);
         wib = wib.^(opts.correctionFactor);
+        opts.kspace{ii} = kspace;
+
         
-        opts.G = G;
-        opts.wib = wib;
-        opts.kx = kx;
-        opts.ky = ky;
+        opts.G{ii} = G;
+        opts.wib{ii} = wib;
+        opts.kx{ii} = kx;
+        opts.ky{ii} = ky;
     end
 
     function prepare_cartesian()
@@ -219,7 +229,8 @@ end
         
         nufft_args = {maskSize, [3 3], 2*maskSize, maskSize/2, 'table', 2^12, 'minmax:kb'};
         G = Gmri(kspace, mask, 'fov', opts.fov, 'basis', {'rect'}, 'nufft', nufft_args);
-        wi = mri_density_comp(kspace,'voronoi','fix_edge',0,'G',G.arg.Gnufft);
+        % wi = mri_density_comp(kspace,'voronoi','fix_edge',0,'G',G.arg.Gnufft);
+        wi = ir_mri_density_comp(kspace,'voronoi','fix_edge',0,'G',G.arg.Gnufft);
         wib = reshape(wi,size(kx));
         wib(wib>0.00005) = 0;
         wib = wib(:);

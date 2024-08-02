@@ -1,4 +1,4 @@
-function mixsamp = voximg2ksp(imPall,cmap,nval,opts)
+function mixsamp = voximg2ksp(imPall,itp,cmap,nval,opts)
 % Convert phantom images to k-space
 %   
 %   INPUTS:
@@ -18,7 +18,7 @@ function mixsamp = voximg2ksp(imPall,cmap,nval,opts)
 % April 2018
 % -----------------------------------------------------------------------------------------
 
-[nr,np] = size(opts.kx);
+[nr,np] = size(opts.kx{itp});
 [~,~,npar,wfcomp,nframe] = size(imPall);
 [~,~,nc,~] = size(cmap);
 im2kspmask = true(nr,np);
@@ -38,8 +38,8 @@ for c = 1:nc
         ksp2DF = squeeze(fft2n(kspF(:,:,c,:),1,2));
     else
         for ipar = 1:npar
-            ksp2DW(:,:,ipar) = embed(opts.G*kspW(:,:,c,ipar),im2kspmask);
-            ksp2DF(:,:,ipar) = embed(opts.G*kspF(:,:,c,ipar),im2kspmask);
+            ksp2DW(:,:,ipar) = embed(opts.G{itp}*kspW(:,:,c,ipar),im2kspmask);
+            ksp2DF(:,:,ipar) = embed(opts.G{itp}*kspF(:,:,c,ipar),im2kspmask);
         end
     end
     

@@ -37,7 +37,7 @@ clear; close all;
 
 % Define file name
 % savename = 'voxim15';
-savename = 'voxim19';
+savename = 'voxim23';
 
 % Define sequence parameters:
 % 'SpoiledGradientEcho' => T1-weighted image
@@ -46,7 +46,7 @@ savename = 'voxim19';
 % 'SingleSpinEcho' => T2 mapping
 % 'SingleSpinEchoWithFatSat' => Diffusion-weighted image
 % 'MultiEchoSpoiledGradientEcho' => Proton density fat fraction
-sigtype = 'SingleSpinEcho';
+sigtype = 'SpoiledGradientEcho';
 
 % Define sampling trajectory:
 % 'cartesian'
@@ -61,12 +61,13 @@ mtx = 256; % matrix size
 npar = 64; % # of partitions
 slthick = 3; % slice thickness (mm)
 nset = 1; % # of sets
+type = 2; % 2 = 2D, 3 = 3D
 
 % Define number of sampling lines
 np_cartesian = 256; % # of Cartesian lines
-np_radial = 200; % # of projections/spokes
+np_radial = 21; % # of projections/spokes
 np_spiral = 48; % # of spiral arms
-sampmode = 'demo'; % sampling mode: 'demo', 'simple', 'eachEcho' 
+sampmode = 'simple'; % sampling mode: 'demo', 'simple', 'eachEcho' 
 % Note that "sampmode" will affect the simulation time (mins to hours, depending on the number of Echoes).
 % Use 'eachEcho' option only when Echo-by-Echo simulation is nessasary
 
@@ -80,7 +81,7 @@ LRmov = 2; % largest left-right (LR) excursion (mm)
 
 % Define coil sensitivity map
 coilmap = 'origcmap.mat';
-nc = 20; % # of coils
+nc = 36; % # of coils
 
 % Define fat-water chemical shift
 FWshift = 220; % water and fat are separated by approximately 440Hz in a 3T static field
@@ -125,39 +126,6 @@ elseif strcmp(samptraj,'spiral')
     opts.np = np_spiral;
 end
 np = opts.np;
-% opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
-%% ktraj, dcf, gmri prepare
-% opts = prepareNUFFT(mtx,np,samptraj,'goldenAngle_sorted_180','fov',fov,'FWshift',FWshift);
-dcf_path = strcat(savename, '_dcf.mat');
-opts = radial3dsos(mtx,npar,np,samptraj, ...
-    'goldenAngle_sorted_180','FWshift',FWshift);
-if ~exist(dcf_path)
-    tic
-    wi = ir_mri_density_comp(opts.kspace,'pipe', 'G', opts.G.Gnufft, ...
-        'arg_pipe', {'fov', [opts.ig.fovs], 'niter', 60});
-    toc
-    save(dcf_path,'wi','-v7.3')
-else
-    wi = load(dcf_path);
-end
-opts.wib = wi.wi;
-wi_max = 1.05 / prod(opts.ig.fovs);
-if 1
-    nsample = size(opts.kspace,1);
-    im subplot
-    plot([1 nsample], wi_max * [1 1], 'm-', ...
-        1:nsample, opts.wib, '.');
-    titlef('DCF')
-    xlim([1 nsample]), xtick([1 nsample])
-    legend('wi max', ['DCF ' 'pipe'], ...
-        'location', 'southeast'), drawnow
-end
-%% coil sensitivity maps
-cmap = gencmap([mtx mtx npar],nc);
-save([savename '_cmap.mat'],'cmap','-v7.3')
-
-% load(coilmap);    
-% cmap = gencmap([mtx mtx nnp, traj_sort = 'linear_sorted';par],nc,origcmap);
 
 %% Simulation
 
@@ -166,31 +134,107 @@ save([savename '_cmap.mat'],'cmap','-v7.3')
 
 % Bloch simulation
 sigevo = gensigevo(tissueprop,seqparam);
+%% coil sensitivity maps
+% cmap = gencmap([mtx mtx npar],nc);
+cmap = mri_sensemap_sim('chat', 0, 'nx', mtx, ...
+	'rcoil', [], 'ncoil', nc, 'coil_distance', 1.2);
+rss = sqrt(sum(cmap.*conj(cmap), 3));
+cnorm = cmap ./ rss;
+cnorm(isnan(cnorm)) = 0;
+cmap = cnorm;
+if 0
+    figure;
+    imshow(sum(cmap.*conj(cmap), 3),[]);
+    colorbar;
+end
+save([savename, '_cmap.mat'],'cmap','-v7.3')
 
+% load(coilmap);    
+% cmap = gencmap([mtx mtx nnp, traj_sort = 'linear_sorted';par],nc,origcmap);
 %% Convert voxels to phantom images (This step will take mins to hours, depending on the number of time frames)
 nt = length(defseq.demosig);
+nphase = size(phanimg, 4);
 nr = 2*mtx;
 opts.nr = nr;
-mixsamp = zeros(nr,np,npar,nc,nt,'single');
-refimg = zeros(mtx, mtx, npar, nt, 2);
-for itp = 1:nt
-    imPall = model2voximg(phanimg(:,:,:,mod(defseq.demosig(itp)-1,tframe)+1),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
-    if itp == 1
-        nval = calcnoiselvl(imPall, cmap);
+% refimg = zeros(mtx, mtx, npar, nt, 2);
+refimg = zeros(mtx, mtx, npar, nt, nphase, 2);
+for iphase = 1:nphase
+    for itp = 1:nt
+        % imPall = model2voximg(phanimg(:,:,:,mod(defseq.demosig(itp)-1,tframe)+1),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
+        imPall = model2voximg(phanimg(:,:,:,iphase),sigevo(defseq.demosig(itp),:,:)); % Ground truth images
+        if itp == 1
+            nval = calcnoiselvl(imPall, cmap);
+        end
+        refimg(:,:,:,itp, iphase, :) = imPall;
     end
-    refimg(:,:,:,itp, :) = imPall;
 end
 
 save([savename '_refimg.mat'],'refimg','-v7.3')
 fprintf('Data acquisition done\n');
-%% transform to kspace
-cmap_pmt = permute(cmap,[1,2,4,3]);
-for itp = 1:nt
-    tic;
-    % mixsamp(:,:,:,:,itp) = voximg2ksp3d(squeeze(refimg(:,:,:,itp, :)),cmap_pmt,nval,opts); % k-space + noise
-    mixsamp(:,:,:,:,itp) = voximg2ksp3d(squeeze(refimg(:,:,:,itp, :)),cmap_pmt,nval,opts); % k-space + noise
-    timeElapsed=toc;    fprintf('Time for recon one frame: %f seconds.\n', timeElapsed);
+
+
+%% ktraj, dcf, gmri prepare
+
+if type == 2
+    opts = prepareNUFFT(nt, mtx,npar,np,samptraj,'linear_GA','fov',fov,'FWshift',FWshift,'sltk',slthick);
+else
+    dcf_path = strcat(savename, '_dcf.mat');
+    opts = radial3dsos(mtx,npar,np,samptraj, ...
+        'linear_GA','FWshift',FWshift);
+    if ~exist(dcf_path)
+        tic
+        wi = ir_mri_density_comp(opts.kspace,'pipe', 'G', opts.G.Gnufft, ...
+            'arg_pipe', {'fov', [opts.ig.fovs], 'niter', 60});
+        toc
+        save(dcf_path,'wi','-v7.3')
+    else
+        wi = load(dcf_path);
+    end
+    opts.wib = wi.wi;
 end
+wi_max = 1.05 / prod([fov, fov]);
+%% save opt info
+save([savename '_opts.mat'],'opts','-v7.3')
+%% plot traj
+im plc 1 2
+if 1
+    nsample = size(opts.kspace{1},1);
+    im subplot
+    plot([1 nsample], wi_max * [1 1], 'm-', ...
+        1:nsample, opts.wib{1}, '.');
+    titlef('DCF')
+    xlim([1 nsample]), xtick([1 nsample])
+    legend('wi max', ['DCF ' 'voronoi'], ...
+        'location', 'southeast'), drawnow
+end
+if 1
+    dx = opts.ig.deltas;
+	omega = opts.kspace{1} .* (2*pi .* dx(1:2));
+	im subplot
+	plot(omega(:,1), omega(:,2), '.')
+	titlef('radial with %d samples', size(omega,1))
+	axis_pipi, axis square
+end
+
+%% transform to kspace
+if type == 2
+    % mixsamp = zeros(nr,np,npar,nc,nt,'single'); % 3D
+    mixsamp = zeros(nr,np,nc,npar,nt,'single'); % 2D
+    for itp = 1:nt
+        tic;
+        mixsamp(:,:,:,:,itp) = voximg2ksp(squeeze(refimg(:,:,:,itp, :)),itp,cmap,nval,opts); % 2D  k-space + noise
+        timeElapsed=toc;    fprintf('Time for recon one frame: %f seconds.\n', timeElapsed);
+    end
+else
+    cmap_pmt = permute(cmap,[1,2,4,3]);
+    mixsamp = zeros(nr,np,npar,nc,nt,'single'); % 2D
+    for itp = 1:nt
+        tic;
+        mixsamp(:,:,:,:,itp) = voximg2ksp3d(squeeze(refimg(:,:,:,itp, :)),cmap_pmt,nval,opts); % 3D k-space + noise
+        timeElapsed=toc;    fprintf('Time for recon one frame: %f seconds.\n', timeElapsed);
+    end
+end
+
 save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -198,10 +242,12 @@ save([savename '_mixsamp.mat'],'mixsamp','-v7.3')
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Convert 4D phantom k-space to images
-tic
-reconimg = ksp2img3d(mixsamp,opts,cmap_pmt);
+if type == 2
+    tic;reconimg = ksp2img(mixsamp,opts,cmap);toc
+else
+    tic;reconimg = ksp2img3d(mixsamp,opts,cmap_pmt);toc
+end
 save([savename '_reconimg.mat'],'reconimg','-v7.3')
-toc
 fprintf('Data reconstruction done\n');
 
 %% Show phantom images

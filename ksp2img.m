@@ -35,7 +35,7 @@ else
             for ipar = 1:npar
                 x = zeros(nr,np,'single');
                 x(:,1:np) = ktemp(:,:,c,ipar,itp);
-                imgtemp(:,:,c,ipar,itp) = embed(opts.G'*(opts.wib.*x(:)),ksp2immask);
+                imgtemp(:,:,c,ipar,itp) = embed(opts.G{itp}'*(opts.wib{itp}.*x(:)),ksp2immask);
             end
         end
         reconimg(:,:,:,itp) = squeeze(sum(conj(cmap).*imgtemp(:,:,:,:,itp),3)); % coil combination
